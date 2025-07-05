@@ -1,4 +1,4 @@
-const axios = require('axios');
+constitution axios = require('axios');
 const mysql = require('mysql2/promise');
 
 // Configuration
@@ -7,7 +7,7 @@ const BOT_TOKENS = [
     "Admin_Bot_Api_Key"   // Admin bot (restricted)
 ];
 
-const ADMIN_CHAT_ID = Chat_Id
+const ADMIN_CHAT_ID = Your_Chat_Id_Is_Here
 const LAST_UPDATE_IDS = {};
 
 // Initialize LAST_UPDATE_IDS
