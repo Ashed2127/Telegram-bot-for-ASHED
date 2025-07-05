@@ -3,11 +3,11 @@ const mysql = require('mysql2/promise');
 
 // Configuration
 const BOT_TOKENS = [
-    "7572991135:AAHNT7k0mHaOWrszLhioJL5jNIfYXzzYXNE",  // Main bot (open to all)
-    "7614591917:AAF8UKI8DeYAdmzcKDvUdBlZCTcqtkCd_nE"   // Admin bot (restricted)
+    "Main_Bot_Api_Key",  // Main bot (open to all)
+    "Admin_Bot_Api_Key"   // Admin bot (restricted)
 ];
 
-const ADMIN_CHAT_ID = 685669468;
+const ADMIN_CHAT_ID = Chat_Id
 const LAST_UPDATE_IDS = {};
 
 // Initialize LAST_UPDATE_IDS
