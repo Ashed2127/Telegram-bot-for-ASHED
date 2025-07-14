@@ -1,13 +1,28 @@
-constitution axios = require('axios');
-const mysql = require('mysql2/promise');
+import  axios from 'axios'
+import  mysql from 'mysql2/promise' 
+import 'dotenv/config'
+import pool from './database.js'; 
+import initializeDatabase from './dbInitializer.js';
+import { 
+  TokenManager,
+  createAddress,
+  addTokens,
+  transferTokens,
+  checkTokenAmount,
+  listAddresses 
+} from './TokenManagerModel.js';
 
+  const user =	process.env.userAPI_KEY;
+  const admin =	process.env.adminAPI_KEY; 
+  
 // Configuration
-const BOT_TOKENS = [
-    "Main_Bot_Api_Key",  // Main bot (open to all)
-    "Admin_Bot_Api_Key"   // Admin bot (restricted)
-];
-
-const ADMIN_CHAT_ID = Your_Chat_Id_Is_Here
+const BOT_TOKENS = [ 
+ 	user, admin
+];   
+   
+const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID);
+  
+   
 const LAST_UPDATE_IDS = {};
 
 // Initialize LAST_UPDATE_IDS
@@ -15,16 +30,6 @@ BOT_TOKENS.forEach(token => {
     LAST_UPDATE_IDS[token] = 0;
 });
 
-// MySQL connection pool
-const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'asheddb',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
 
 // MarkdownV2 escaper
 function escapeMarkdown(text) {
@@ -33,194 +38,7 @@ function escapeMarkdown(text) {
         markdownSpecialChars.includes(char) ? `\\${char}` : char
     ).join('');
 }
-
-// Initialize database tables
-async function initializeDatabase() {
-    try {
-        const connection = await pool.getConnection();
-        
-        // Create transactions table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                from_address VARCHAR(255) NOT NULL,
-                to_address VARCHAR(255) NOT NULL,
-                amount INT NOT NULL,
-                timestamp DATETIME NOT NULL,
-                chat_id BIGINT NOT NULL,
-                user_id BIGINT NOT NULL,
-                INDEX (from_address),
-                INDEX (to_address),
-                INDEX (user_id)
-            )
-        `);
-        
-        // Create accounts table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS accounts (
-                address VARCHAR(255) PRIMARY KEY,
-                balance INT NOT NULL DEFAULT 0,
-                INDEX (address)
-            )
-        `);
-        
-        // Create command_logs table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS command_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                chat_id BIGINT NOT NULL,
-                user_id BIGINT NOT NULL,
-                command VARCHAR(255) NOT NULL,
-                message TEXT NOT NULL,
-                timestamp DATETIME NOT NULL,
-                bot_token VARCHAR(5) NOT NULL,
-                INDEX (chat_id),
-                INDEX (user_id)
-            )
-        `);
-        
-        connection.release();
-        console.log("✅ Database tables initialized");
-    } catch (error) {
-        console.error("❌ Error initializing database:", error);
-    }
-}
-
-class TokenManager {
-    constructor() {
-        console.log("💰 TokenManager initialized");
-    }
-
-    async createAddress(userId) {
-        const address = userId.toString();
-        try {
-            const [rows] = await pool.query(
-                'INSERT IGNORE INTO accounts (address, balance) VALUES (?, 0)',
-                [address]
-            );
-            
-            if (rows.affectedRows > 0) {
-                console.log(`🆕 Created new account: ${address}`);
-            }
-            return address;
-        } catch (error) {
-            console.error(`❌ Error creating address: ${error}`);
-            throw error;
-        }
-    }
-
-    async addTokens(address, amount) {
-        try {
-            const [result] = await pool.query(
-                'UPDATE accounts SET balance = balance + ? WHERE address = ?',
-                [amount, address]
-            );
-            
-            if (result.affectedRows > 0) {
-                console.log(`➕ Added ${amount} ASHED to ${address}`);
-                const [rows] = await pool.query(
-                    'SELECT balance FROM accounts WHERE address = ?',
-                    [address]
-                );
-                return { success: true, balance: rows[0].balance };
-            }
-            
-            console.log(`❌ Account ${address} not found`);
-            return { success: false, balance: null };
-        } catch (error) {
-            console.error(`❌ Error adding tokens: ${error}`);
-            throw error;
-        }
-    }
-
-    async transferTokens(fromAddress, toAddress, amount, chatId, userId) {
-        const connection = await pool.getConnection();
-        try {
-            await connection.beginTransaction();
-            
-            // Check sender balance
-            const [sender] = await connection.query(
-                'SELECT balance FROM accounts WHERE address = ? FOR UPDATE',
-                [fromAddress]
-            );
-            
-            if (sender.length === 0 || sender[0].balance < amount) {
-                await connection.rollback();
-                console.log(`❌ Transfer failed - insufficient balance or account not found`);
-                return false;
-            }
-            
-            // Check recipient exists
-            const [recipient] = await connection.query(
-                'SELECT 1 FROM accounts WHERE address = ?',
-                [toAddress]
-            );
-            
-            if (recipient.length === 0) {
-                await connection.rollback();
-                console.log(`❌ Recipient account ${toAddress} not found`);
-                return false;
-            }
-            
-            // Update balances
-            await connection.query(
-                'UPDATE accounts SET balance = balance - ? WHERE address = ?',
-                [amount, fromAddress]
-            );
-            
-            await connection.query(
-                'UPDATE accounts SET balance = balance + ? WHERE address = ?',
-                [amount, toAddress]
-            );
-            
-            // Record transaction
-            await connection.query(
-                'INSERT INTO transactions (from_address, to_address, amount, timestamp, chat_id, user_id) VALUES (?, ?, ?, NOW(), ?, ?)',
-                [fromAddress, toAddress, amount, chatId, userId]
-            );
-            
-            await connection.commit();
-            console.log(`🔀 Transferred ${amount} ASHED from ${fromAddress} to ${toAddress}`);
-            return true;
-        } catch (error) {
-            await connection.rollback();
-            console.error(`❌ Transfer error: ${error}`);
-            throw error;
-        } finally {
-            connection.release();
-        }
-    }
-
-    async checkTokenAmount(address) {
-        try {
-            const [rows] = await pool.query(
-                'SELECT balance FROM accounts WHERE address = ?',
-                [address]
-            );
-            return rows.length > 0 ? rows[0].balance : null;
-        } catch (error) {
-            console.error(`❌ Error checking balance: ${error}`);
-            throw error;
-        }
-    }
-
-    async listAddresses() {
-        try {
-            const [rows] = await pool.query(
-                'SELECT address, balance FROM accounts ORDER BY address'
-            );
-            
-            const result = {};
-            rows.forEach(row => {
-                result[row.address] = row.balance;
-            });
-            return result;
-        } catch (error) {
-            console.error(`❌ Error listing addresses: ${error}`);
-            throw error;
-        }
-    }
-}
+ 
 
 async function sendMessage(token, chatId, text, parseMode = 'MarkdownV2') {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -257,7 +75,8 @@ function isAdminBot(token) {
 }
 
 function isAdminChat(chatId) {
-    return chatId === ADMIN_CHAT_ID;
+    return chatId === ADMIN_CHAT_ID; 
+    	// return chatId ===process.env.ADMIN_CHAT_ID; 
 }
 
 async function processCommand(tokenManager, message, chatId, userId, token) {
@@ -574,8 +393,11 @@ async function botWorker(token, tokenManager) {
                             
                             // For admin bot, only process if from ADMIN_CHAT_ID
                             if (isAdminBot(token) && !isAdminChat(chatId)) {
+                                        // console.log("CHAT_ID ",chatId);
+ 
                                 console.log(`🚨 Blocked admin command from unauthorized chat: ${chatId}`);
-                                continue;
+								// console.log(`Type of Id: ${typeof(chatId)}`);
+                                continue;   
                             }
                             
                             await processCommand(tokenManager, message, chatId, userId, token);
