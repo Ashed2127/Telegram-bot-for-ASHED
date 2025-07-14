@@ -1,8 +1,8 @@
 import  axios from 'axios'
 import  mysql from 'mysql2/promise' 
 import 'dotenv/config'
-import pool from './database.js'; 
-import initializeDatabase from './dbInitializer.js';
+import pool from './dbconfig/database.js'; 
+import initializeDatabase from './dbconfig/dbInitializer.js';
 import { 
   TokenManager,
   createAddress,
@@ -10,7 +10,7 @@ import {
   transferTokens,
   checkTokenAmount,
   listAddresses 
-} from './TokenManagerModel.js';
+} from './TokenModel/TokenManagerModel.js';
 
   const user =	process.env.userAPI_KEY;
   const admin =	process.env.adminAPI_KEY; 

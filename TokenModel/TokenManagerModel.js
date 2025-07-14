@@ -1,4 +1,4 @@
-import pool from './database.js';
+import pool from '../dbconfig/database.js'; 
 
 export class TokenManager {
     constructor() {
